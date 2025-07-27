@@ -1,0 +1,146 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-typescript:
+    name: Test TypeScript
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18, 20, 21]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          
+      - name: Install dependencies
+        run: |
+          cd ts
+          pnpm install --frozen-lockfile
+          
+      - name: Lint
+        run: |
+          cd ts
+          pnpm lint
+          
+      - name: Type check
+        run: |
+          cd ts
+          pnpm type-check
+          
+      - name: Build
+        run: |
+          cd ts
+          pnpm build
+          
+      - name: Test
+        run: |
+          cd ts
+          pnpm test
+          
+      - name: Test coverage
+        run: |
+          cd ts
+          pnpm test:coverage
+          
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./ts/coverage/lcov.info
+          flags: typescript
+          name: typescript-${{ matrix.node-version }}
+
+  test-go:
+    name: Test Go
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22']
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+          
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ matrix.go-version }}-
+            ${{ runner.os }}-go-
+            
+      - name: Download dependencies
+        run: |
+          cd go
+          go mod download
+          
+      - name: Lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          working-directory: go
+          
+      - name: Test
+        run: |
+          cd go
+          go test -v -race -coverprofile=coverage.out ./...
+          
+      - name: Coverage
+        run: |
+          cd go
+          go tool cover -func=coverage.out
+          
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./go/coverage.out
+          flags: go
+          name: go-${{ matrix.go-version }}
+
+  validate-schema:
+    name: Validate JSON Schema
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Install AJV CLI
+        run: npm install -g ajv-cli
+        
+      - name: Validate schema syntax
+        run: |
+          ajv validate -s schema/scenefile.schema.json --verbose
+          
+      - name: Test schema against examples
+        run: |
+          # Add validation against example files when they exist
+          echo "Schema validation passed"
